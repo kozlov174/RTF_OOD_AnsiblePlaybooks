@@ -1,0 +1,13 @@
+---
+- name: Ping host 10.40.240.3
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Ping the host 10.40.240.3
+      ansible.builtin.ping:
+        data: "Testing connectivity to 10.40.240.3"
+
+    - name: Debug ping result
+      ansible.builtin.debug:
+        msg: "Successfully pinged 10.40.240.3"
