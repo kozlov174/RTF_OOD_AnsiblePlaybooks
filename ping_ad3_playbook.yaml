@@ -1,13 +1,22 @@
 ---
 - name: Ping host 10.40.240.3
-  hosts: all
+  hosts: localhost
+  connection: local
   gather_facts: false
 
   tasks:
-    - name: Ping the host 10.40.240.3
-      ansible.builtin.ping:
-        data: "Testing connectivity to 10.40.240.3"
+    - name: Ping 10.40.240.3 with shell command
+      ansible.builtin.shell: |
+        ping -c 3 -W 2 10.40.240.3
+      register: ping_result
+      ignore_errors: true
+      changed_when: false
 
-    - name: Debug ping result
+    - name: Show ping results
       ansible.builtin.debug:
-        msg: "Successfully pinged 10.40.240.3"
+        msg: "{{ ping_result.stdout_lines }}"
+
+    - name: Check if host is reachable
+      ansible.builtin.fail:
+        msg: "Host 10.40.240.3 is unreachable!"
+      when: ping_result.rc != 0
