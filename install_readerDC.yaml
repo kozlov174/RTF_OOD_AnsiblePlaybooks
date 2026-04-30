@@ -1,39 +1,43 @@
 - name: Install Adobe Acrobat Reader DC via Chocolatey
   hosts: Win_Hosts
   gather_facts: false
+  ignore_unreachable: true
 
   vars:
     acrobat_version: "2026.1.21367"
     ansible_remote_tmp: 'C:\Windows\Temp'
 
   tasks:
-    - name: Check if Chocolatey is installed
-      ansible.builtin.raw: choco --version
+    - name: Set UTF-8 and check Chocolatey
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        choco --version
       register: choco_check
       ignore_errors: true
       changed_when: false
 
     - name: Install Chocolatey if not present
       ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         Set-ExecutionPolicy Bypass -Scope Process -Force
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
         iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
       when: choco_check.rc is not defined or choco_check.rc != 0
       register: choco_install
 
-    - name: Show Chocolatey install output
-      ansible.builtin.debug:
-        msg: "{{ choco_install.stdout_lines }}"
-      when: choco_install.changed | default(false)
-
     - name: Check if Adobe Acrobat Reader is already installed
-      ansible.builtin.raw: choco list --local-only adobereader
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        choco list --local-only adobereader
       register: acrobat_check
       changed_when: false
       ignore_errors: true
 
     - name: Install Adobe Acrobat Reader DC
       ansible.builtin.raw: |
+        chcp 65001 | Out-Null
         choco install adobereader --version={{ acrobat_version }} -y --no-progress --ignore-checksums
       register: acrobat_install
       when: acrobat_check.stdout is not defined or 'adobereader' not in acrobat_check.stdout
@@ -44,7 +48,7 @@
         msg: "{{ acrobat_install.stdout_lines }}"
       when: acrobat_install.stdout_lines is defined
 
-    - name: Already installed message
+    - name: Already installed
       ansible.builtin.debug:
         msg: "Adobe Acrobat Reader DC уже установлен"
       when: acrobat_check.stdout is defined and 'adobereader' in acrobat_check.stdout
