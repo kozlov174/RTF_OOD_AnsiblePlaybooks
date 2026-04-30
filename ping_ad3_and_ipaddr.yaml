@@ -1,5 +1,5 @@
 - name: Ping host 10.40.240.3
-  hosts: VirtualMachines_Windows_VMManager
+  hosts: Win_Hosts
   connection: local
   gather_facts: false
 
