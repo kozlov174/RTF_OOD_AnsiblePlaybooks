@@ -4,7 +4,6 @@
 
   vars:
     acrobat_version: "2026.1.21367"
-    choco_source: "https://chocolatey.org/api/v2/"
 
   tasks:
     - name: Check if Chocolatey is installed
@@ -18,14 +17,13 @@
         Set-ExecutionPolicy Bypass -Scope Process -Force;
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
         iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-      when: choco_check.rc != 0
+      when: choco_check.rc is not defined or choco_check.rc != 0
 
     - name: Install Adobe Acrobat Reader DC
       chocolatey.chocolatey.win_chocolatey:
         name: adobereader
         version: "{{ acrobat_version }}"
         state: present
-        source: "{{ choco_source }}"
       register: acrobat_install
 
     - name: Show installation result
