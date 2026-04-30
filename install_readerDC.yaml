@@ -4,10 +4,11 @@
 
   vars:
     acrobat_version: "2026.1.21367"
+    ansible_remote_tmp: 'C:\Windows\Temp'
 
   tasks:
     - name: Check if Chocolatey is installed
-      ansible.windows.win_command: choco --version
+      ansible.builtin.raw: choco --version
       register: choco_check
       ignore_errors: true
       changed_when: false
@@ -20,18 +21,11 @@
       when: choco_check.rc is not defined or choco_check.rc != 0
 
     - name: Install Adobe Acrobat Reader DC
-      chocolatey.chocolatey.win_chocolatey:
-        name: adobereader
-        version: "{{ acrobat_version }}"
-        state: present
+      ansible.builtin.raw: |
+        choco install adobereader --version={{ acrobat_version }} -y --no-progress
       register: acrobat_install
+      changed_when: "'already installed' not in acrobat_install.stdout"
 
     - name: Show installation result
       ansible.builtin.debug:
-        msg: "Adobe Acrobat Reader DC {{ acrobat_version }} installed successfully"
-      when: acrobat_install.changed
-
-    - name: Already installed message
-      ansible.builtin.debug:
-        msg: "Adobe Acrobat Reader DC {{ acrobat_version }} is already installed"
-      when: not acrobat_install.changed
+        msg: "{{ acrobat_install.stdout_lines }}"
