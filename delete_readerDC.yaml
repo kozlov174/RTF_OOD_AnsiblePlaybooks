@@ -5,7 +5,6 @@
 
   vars:
     ansible_remote_tmp: 'C:\Windows\Temp'
-    acrobat_guid: '{AC76BA86-1033-FF00-7760-BC15014EA700}'
 
   tasks:
     - name: Check if Adobe Acrobat is installed
@@ -50,18 +49,21 @@
       when: "'FOUND' in acrobat_check.stdout"
       changed_when: "'UNINSTALLED' in msi_uninstall.stdout"
       failed_when: "'STILL_PRESENT' in msi_uninstall.stdout"
+      ignore_errors: true
 
     - name: Show uninstall result
       ansible.builtin.debug:
         msg: "{{ msi_uninstall.stdout_lines }}"
       when: msi_uninstall.stdout_lines is defined
 
-    - name: Clean up leftover folders
+    - name: Clean up leftover Windows folders
       ansible.builtin.raw: |
         chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $paths = @(
           "C:\Program Files\Adobe\Acrobat DC",
-          "C:\Program Files (x86)\Adobe\Acrobat Reader DC"
+          "C:\Program Files (x86)\Adobe\Acrobat Reader DC",
+          "C:\Program Files\Adobe\Acrobat Reader DC"
         )
         foreach ($path in $paths) {
           if (Test-Path $path) {
@@ -69,12 +71,36 @@
             Write-Output "Удалена папка: $path"
           }
         }
-      register: cleanup
+      register: folder_cleanup
       when: "'FOUND' in acrobat_check.stdout"
-      changed_when: "'Удалена папка' in cleanup.stdout"
+      changed_when: "'Удалена папка' in folder_cleanup.stdout"
       ignore_errors: true
 
-    - name: Show cleanup result
+    - name: Show folder cleanup result
       ansible.builtin.debug:
-        msg: "{{ cleanup.stdout_lines }}"
-      when: cleanup.stdout_lines is defined
+        msg: "{{ folder_cleanup.stdout_lines }}"
+      when: folder_cleanup.stdout_lines is defined
+
+    - name: Clean up Chocolatey package record
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $paths = @(
+          "C:\ProgramData\chocolatey\lib\adobereader",
+          "C:\ProgramData\chocolatey\lib-bad\adobereader"
+        )
+        foreach ($path in $paths) {
+          if (Test-Path $path) {
+            Remove-Item -Path $path -Recurse -Force
+            Write-Output "Удалена папка Chocolatey: $path"
+          }
+        }
+      register: choco_cleanup
+      when: "'FOUND' in acrobat_check.stdout"
+      changed_when: "'Удалена папка' in choco_cleanup.stdout"
+      ignore_errors: true
+
+    - name: Show Chocolatey cleanup result
+      ansible.builtin.debug:
+        msg: "{{ choco_cleanup.stdout_lines }}"
+      when: choco_cleanup.stdout_lines is defined
