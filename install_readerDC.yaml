@@ -1,0 +1,39 @@
+- name: Install Adobe Acrobat Reader DC via Chocolatey
+  hosts: Win_Hosts
+  gather_facts: false
+
+  vars:
+    acrobat_version: "2026.1.21367"
+    choco_source: "https://chocolatey.org/api/v2/"
+
+  tasks:
+    - name: Check if Chocolatey is installed
+      ansible.windows.win_command: choco --version
+      register: choco_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install Chocolatey if not present
+      ansible.builtin.raw: |
+        Set-ExecutionPolicy Bypass -Scope Process -Force;
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+      when: choco_check.rc != 0
+
+    - name: Install Adobe Acrobat Reader DC
+      chocolatey.chocolatey.win_chocolatey:
+        name: adobereader
+        version: "{{ acrobat_version }}"
+        state: present
+        source: "{{ choco_source }}"
+      register: acrobat_install
+
+    - name: Show installation result
+      ansible.builtin.debug:
+        msg: "Adobe Acrobat Reader DC {{ acrobat_version }} installed successfully"
+      when: acrobat_install.changed
+
+    - name: Already installed message
+      ansible.builtin.debug:
+        msg: "Adobe Acrobat Reader DC {{ acrobat_version }} is already installed"
+      when: not acrobat_install.changed
