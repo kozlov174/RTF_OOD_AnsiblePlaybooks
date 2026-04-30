@@ -1,53 +1,100 @@
-- name: Uninstall Adobe Acrobat Reader DC via Chocolatey
+- name: Uninstall Adobe Acrobat DC
   hosts: Win_Hosts
   gather_facts: false
+  ignore_unreachable: true
 
   vars:
-    acrobat_version: "2026.1.21367"
+    ansible_remote_tmp: 'C:\Windows\Temp'
 
   tasks:
-    - name: Check if Chocolatey is installed
-      ansible.windows.win_command: choco --version
-      register: choco_check
-      ignore_errors: true
+    - name: Check if Adobe Acrobat is installed via MSI or Chocolatey
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $msi = Get-Package -Name '*Adobe Acrobat*' -ErrorAction SilentlyContinue
+        $choco = choco list --local-only adobereader 2>$null
+        if ($msi) {
+          Write-Output "FOUND_MSI:$($msi.Name):$($msi.Version):$($msi.TagId)"
+        } elseif ($choco -match 'adobereader') {
+          Write-Output "FOUND_CHOCO"
+        } else {
+          Write-Output "NOT_FOUND"
+        }
+      register: acrobat_check
       changed_when: false
-
-    - name: Fail if Chocolatey is not installed
-      ansible.builtin.fail:
-        msg: "Chocolatey не установлен — невозможно удалить пакет через choco"
-      when: choco_check.rc != 0
-
-    - name: Check if Adobe Acrobat Reader is installed
-      chocolatey.chocolatey.win_chocolatey_facts:
-      register: choco_facts
-
-    - name: Uninstall Adobe Acrobat Reader DC
-      chocolatey.chocolatey.win_chocolatey:
-        name: adobereader
-        version: "{{ acrobat_version }}"
-        state: absent
-      register: acrobat_uninstall
-      when: >
-        choco_facts.ansible_facts.packages is defined and
-        'adobereader' in choco_facts.ansible_facts.packages
-
-    - name: Show uninstall result
-      ansible.builtin.debug:
-        msg: "Adobe Acrobat Reader DC {{ acrobat_version }} успешно удалён"
-      when: acrobat_uninstall.changed | default(false)
+      ignore_errors: true
 
     - name: Not installed message
       ansible.builtin.debug:
-        msg: "Adobe Acrobat Reader DC не найден — удаление не требуется"
+        msg: "Adobe Acrobat не найден — удаление не требуется"
       when: >
-        choco_facts.ansible_facts.packages is not defined or
-        'adobereader' not in choco_facts.ansible_facts.packages
+        acrobat_check.stdout is not defined or
+        'NOT_FOUND' in acrobat_check.stdout
 
-    - name: Clean up leftover Acrobat folders
-      ansible.windows.win_file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC"
-        - "C:\\Program Files\\Adobe\\Acrobat Reader DC"
+    - name: Uninstall Adobe Acrobat via MSI
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $app = Get-Package -Name '*Adobe Acrobat*' -ErrorAction SilentlyContinue
+        if ($app) {
+          $guid = $app.TagId
+          Write-Output "Удаляем: $($app.Name) $($app.Version)"
+          Start-Process msiexec.exe -ArgumentList "/x $guid /quiet /norestart" -Wait
+          Write-Output "UNINSTALLED"
+        }
+      register: msi_uninstall
+      when: >
+        acrobat_check.stdout is defined and
+        'FOUND_MSI' in acrobat_check.stdout
+      changed_when: "'UNINSTALLED' in msi_uninstall.stdout"
       ignore_errors: true
+
+    - name: Uninstall Adobe Acrobat via Chocolatey
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        choco uninstall adobereader -y --no-progress
+        Write-Output "UNINSTALLED"
+      register: choco_uninstall
+      when: >
+        acrobat_check.stdout is defined and
+        'FOUND_CHOCO' in acrobat_check.stdout
+      changed_when: "'UNINSTALLED' in choco_uninstall.stdout"
+      ignore_errors: true
+
+    - name: Show MSI uninstall result
+      ansible.builtin.debug:
+        msg: "{{ msi_uninstall.stdout_lines }}"
+      when: msi_uninstall.stdout_lines is defined
+
+    - name: Show Chocolatey uninstall result
+      ansible.builtin.debug:
+        msg: "{{ choco_uninstall.stdout_lines }}"
+      when: choco_uninstall.stdout_lines is defined
+
+    - name: Clean up leftover folders
+      ansible.builtin.raw: |
+        chcp 65001 | Out-Null
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $paths = @(
+          "C:\Program Files\Adobe\Acrobat DC",
+          "C:\Program Files (x86)\Adobe\Acrobat Reader DC",
+          "C:\Program Files\Adobe\Acrobat Reader DC"
+        )
+        foreach ($path in $paths) {
+          if (Test-Path $path) {
+            Remove-Item -Path $path -Recurse -Force
+            Write-Output "Удалена папка: $path"
+          }
+        }
+      register: cleanup
+      when: >
+        acrobat_check.stdout is defined and
+        'NOT_FOUND' not in acrobat_check.stdout
+      changed_when: "'Удалена папка' in cleanup.stdout"
+      ignore_errors: true
+
+    - name: Show cleanup result
+      ansible.builtin.debug:
+        msg: "{{ cleanup.stdout_lines }}"
+      when: cleanup.stdout_lines is defined
