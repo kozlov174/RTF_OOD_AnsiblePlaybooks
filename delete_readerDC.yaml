@@ -1,0 +1,53 @@
+- name: Uninstall Adobe Acrobat Reader DC via Chocolatey
+  hosts: VirtualMachines_Windows_VMManager
+  gather_facts: false
+
+  vars:
+    acrobat_version: "2026.1.21367"
+
+  tasks:
+    - name: Check if Chocolatey is installed
+      ansible.windows.win_command: choco --version
+      register: choco_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Fail if Chocolatey is not installed
+      ansible.builtin.fail:
+        msg: "Chocolatey не установлен — невозможно удалить пакет через choco"
+      when: choco_check.rc != 0
+
+    - name: Check if Adobe Acrobat Reader is installed
+      chocolatey.chocolatey.win_chocolatey_facts:
+      register: choco_facts
+
+    - name: Uninstall Adobe Acrobat Reader DC
+      chocolatey.chocolatey.win_chocolatey:
+        name: adobereader
+        version: "{{ acrobat_version }}"
+        state: absent
+      register: acrobat_uninstall
+      when: >
+        choco_facts.ansible_facts.packages is defined and
+        'adobereader' in choco_facts.ansible_facts.packages
+
+    - name: Show uninstall result
+      ansible.builtin.debug:
+        msg: "Adobe Acrobat Reader DC {{ acrobat_version }} успешно удалён"
+      when: acrobat_uninstall.changed | default(false)
+
+    - name: Not installed message
+      ansible.builtin.debug:
+        msg: "Adobe Acrobat Reader DC не найден — удаление не требуется"
+      when: >
+        choco_facts.ansible_facts.packages is not defined or
+        'adobereader' not in choco_facts.ansible_facts.packages
+
+    - name: Clean up leftover Acrobat folders
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC"
+        - "C:\\Program Files\\Adobe\\Acrobat Reader DC"
+      ignore_errors: true
