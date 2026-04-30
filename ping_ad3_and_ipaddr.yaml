@@ -1,0 +1,36 @@
+- name: Ping host 10.40.240.3
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Get local IP address
+      ansible.builtin.shell: |
+        ip route get 1 | awk '{print $NF;exit}'
+      register: local_ip
+      changed_when: false
+
+    - name: Show local machine IP
+      ansible.builtin.debug:
+        msg: "Local machine IP address: {{ local_ip.stdout }}"
+
+    - name: Ping 10.40.240.3 with shell command
+      ansible.builtin.shell: |
+        ping -c 3 -W 2 10.40.240.3
+      register: ping_result
+      ignore_errors: true
+      changed_when: false
+
+    - name: Show ping results
+      ansible.builtin.debug:
+        msg: "{{ ping_result.stdout_lines }}"
+
+    - name: Check if host is reachable
+      ansible.builtin.fail:
+        msg: "Host 10.40.240.3 is unreachable from {{ local_ip.stdout }}!"
+      when: ping_result.rc != 0
+
+    - name: Success message
+      ansible.builtin.debug:
+        msg: "Host 10.40.240.3 is reachable from {{ local_ip.stdout }}"
+      when: ping_result.rc == 0
