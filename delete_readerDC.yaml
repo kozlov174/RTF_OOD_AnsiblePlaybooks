@@ -5,18 +5,18 @@
 
   vars:
     ansible_remote_tmp: 'C:\Windows\Temp'
+    acrobat_guid: '{AC76BA86-1033-FF00-7760-BC15014EA700}'
 
   tasks:
-    - name: Check if Adobe Acrobat is installed via MSI or Chocolatey
+    - name: Check if Adobe Acrobat is installed
       ansible.builtin.raw: |
         chcp 65001 | Out-Null
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $msi = Get-Package -Name '*Adobe Acrobat*' -ErrorAction SilentlyContinue
-        $choco = choco list --local-only adobereader 2>$null
-        if ($msi) {
-          Write-Output "FOUND_MSI:$($msi.Name):$($msi.Version):$($msi.TagId)"
-        } elseif ($choco -match 'adobereader') {
-          Write-Output "FOUND_CHOCO"
+        $app = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" |
+               Where-Object { $_.DisplayName -like '*Adobe Acrobat*' } |
+               Select-Object -First 1
+        if ($app) {
+          Write-Output "FOUND:$($app.DisplayName):$($app.DisplayVersion):$($app.PSChildName)"
         } else {
           Write-Output "NOT_FOUND"
         }
@@ -27,59 +27,41 @@
     - name: Not installed message
       ansible.builtin.debug:
         msg: "Adobe Acrobat не найден — удаление не требуется"
-      when: >
-        acrobat_check.stdout is not defined or
-        'NOT_FOUND' in acrobat_check.stdout
+      when: "'NOT_FOUND' in acrobat_check.stdout"
 
-    - name: Uninstall Adobe Acrobat via MSI
+    - name: Uninstall Adobe Acrobat via msiexec
       ansible.builtin.raw: |
         chcp 65001 | Out-Null
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $app = Get-Package -Name '*Adobe Acrobat*' -ErrorAction SilentlyContinue
-        if ($app) {
-          $guid = $app.TagId
-          Write-Output "Удаляем: $($app.Name) $($app.Version)"
-          Start-Process msiexec.exe -ArgumentList "/x $guid /quiet /norestart" -Wait
+        $guid = (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" |
+                 Where-Object { $_.DisplayName -like '*Adobe Acrobat*' } |
+                 Select-Object -First 1).PSChildName
+        Write-Output "Удаляем GUID: $guid"
+        cmd /c "msiexec /x $guid /quiet /norestart"
+        Start-Sleep -Seconds 10
+        $check = Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" |
+                 Where-Object { $_.DisplayName -like '*Adobe Acrobat*' }
+        if (-not $check) {
           Write-Output "UNINSTALLED"
+        } else {
+          Write-Output "STILL_PRESENT"
         }
       register: msi_uninstall
-      when: >
-        acrobat_check.stdout is defined and
-        'FOUND_MSI' in acrobat_check.stdout
+      when: "'FOUND' in acrobat_check.stdout"
       changed_when: "'UNINSTALLED' in msi_uninstall.stdout"
-      ignore_errors: true
+      failed_when: "'STILL_PRESENT' in msi_uninstall.stdout"
 
-    - name: Uninstall Adobe Acrobat via Chocolatey
-      ansible.builtin.raw: |
-        chcp 65001 | Out-Null
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        choco uninstall adobereader -y --no-progress
-        Write-Output "UNINSTALLED"
-      register: choco_uninstall
-      when: >
-        acrobat_check.stdout is defined and
-        'FOUND_CHOCO' in acrobat_check.stdout
-      changed_when: "'UNINSTALLED' in choco_uninstall.stdout"
-      ignore_errors: true
-
-    - name: Show MSI uninstall result
+    - name: Show uninstall result
       ansible.builtin.debug:
         msg: "{{ msi_uninstall.stdout_lines }}"
       when: msi_uninstall.stdout_lines is defined
 
-    - name: Show Chocolatey uninstall result
-      ansible.builtin.debug:
-        msg: "{{ choco_uninstall.stdout_lines }}"
-      when: choco_uninstall.stdout_lines is defined
-
     - name: Clean up leftover folders
       ansible.builtin.raw: |
         chcp 65001 | Out-Null
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $paths = @(
           "C:\Program Files\Adobe\Acrobat DC",
-          "C:\Program Files (x86)\Adobe\Acrobat Reader DC",
-          "C:\Program Files\Adobe\Acrobat Reader DC"
+          "C:\Program Files (x86)\Adobe\Acrobat Reader DC"
         )
         foreach ($path in $paths) {
           if (Test-Path $path) {
@@ -88,9 +70,7 @@
           }
         }
       register: cleanup
-      when: >
-        acrobat_check.stdout is defined and
-        'NOT_FOUND' not in acrobat_check.stdout
+      when: "'FOUND' in acrobat_check.stdout"
       changed_when: "'Удалена папка' in cleanup.stdout"
       ignore_errors: true
 
